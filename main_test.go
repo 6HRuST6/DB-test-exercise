@@ -18,19 +18,15 @@ func Test_SelectClient_WhenOk(t *testing.T) {
 	defer db.Close()
 	clientID := 1
 
-	var client Client
-
-	err = db.QueryRow("SELECT id, fio, login, birthday, email FROM clients WHERE id = :id",
-		sql.Named("id", clientID),
-	).Scan(&client.ID, &client.FIO, &client.Login, &client.Birthday, &client.Email)
-
+	cl, err := selectClient(db, clientID)
 	require.NoError(t, err)
 
-	assert.Equal(t, clientID, client.ID)
-	assert.NotEmpty(t, client.FIO)
-	assert.NotEmpty(t, client.Login)
-	assert.NotEmpty(t, client.Email)
-	// напиши тест здесь
+	assert.Equal(t, clientID, cl.ID)
+	assert.NotEmpty(t, cl.FIO)
+	assert.NotEmpty(t, cl.Birthday)
+	assert.NotEmpty(t, cl.Login)
+	assert.NotEmpty(t, cl.Email)
+
 }
 
 func Test_SelectClient_WhenNoClient(t *testing.T) {
@@ -42,16 +38,14 @@ func Test_SelectClient_WhenNoClient(t *testing.T) {
 	defer db.Close()
 	clientID := -1
 
-	var client Client
-	// напиши тест здесь
+	cl, err := selectClient(db, clientID)
+	require.Equal(t, sql.ErrNoRows, err)
 
-	err = db.QueryRow("SELECT id, fio, login, birthday, email FROM clients WHERE id = :id",
-		sql.Named("id", clientID),
-	).Scan(&client.ID, &client.FIO, &client.Login, &client.Birthday, &client.Email)
-
-	require.Error(t, err)
-	require.ErrorIs(t, err, sql.ErrNoRows)
-
+	assert.Empty(t, cl.ID)
+	assert.Empty(t, cl.FIO)
+	assert.Empty(t, cl.Login)
+	assert.Empty(t, cl.Birthday)
+	assert.Empty(t, cl.Email)
 }
 
 func Test_InsertClient_ThenSelectAndCheck(t *testing.T) {
@@ -68,38 +62,15 @@ func Test_InsertClient_ThenSelectAndCheck(t *testing.T) {
 		Email:    "mail@mail.com",
 	}
 
-	// напиши тест здесь
-	res, err := db.Exec("INSERT INTO clients (fio, login,birthday,email) VALUES (:fio, :login,:birthday,:email)",
-		sql.Named("fio", cl.FIO),
-		sql.Named("login", cl.Login),
-		sql.Named("birthday", cl.Birthday),
-		sql.Named("email", cl.Email))
+	cl.ID, err = insertClient(db, cl)
 	require.NoError(t, err)
 
-	b, err := res.RowsAffected()
-	require.NoError(t, err)
-	assert.Equal(t, int64(1), b)
+	require.NotEmpty(t, cl.ID)
 
-	n, err := res.LastInsertId()
-	require.NoError(t, err)
-	require.Greater(t, n, int64(0))
-
-	var got Client
-
-	err = db.QueryRow(
-		`SELECT id, fio, login, birthday, email
-		 FROM clients
-		 WHERE id = :id`,
-		sql.Named("id", n),
-	).Scan(&got.ID, &got.FIO, &got.Login, &got.Birthday, &got.Email)
+	stored, err := selectClient(db, cl.ID)
 	require.NoError(t, err)
 
-	assert.Equal(t, int(n), got.ID)
-	assert.Equal(t, cl.FIO, got.FIO)
-	assert.Equal(t, cl.Login, got.Login)
-	assert.Equal(t, cl.Birthday, got.Birthday)
-	assert.Equal(t, cl.Email, got.Email)
-
+	assert.Equal(t, cl, stored)
 }
 
 func Test_InsertClient_DeleteClient_ThenCheck(t *testing.T) {
@@ -116,31 +87,17 @@ func Test_InsertClient_DeleteClient_ThenCheck(t *testing.T) {
 	}
 
 	// напиши тест здесь
-	res, err := db.Exec("INSERT INTO clients (fio, login,birthday,email) VALUES (:fio, :login,:birthday,:email)",
-		sql.Named("fio", cl.FIO),
-		sql.Named("login", cl.Login),
-		sql.Named("birthday", cl.Birthday),
-		sql.Named("email", cl.Email))
+	id, err := insertClient(db, cl)
+
+	require.NoError(t, err)
+	require.NotEmpty(t, id)
+
+	_, err = selectClient(db, id)
 	require.NoError(t, err)
 
-	b, err := res.RowsAffected()
-	require.NoError(t, err)
-	assert.Equal(t, int64(1), b)
-
-	n, err := res.LastInsertId()
-	require.NoError(t, err)
-	require.Greater(t, n, int64(0))
-
-	_, err = db.Exec("DELETE FROM clients WHERE id = :id", sql.Named("id", int(n)))
+	err = deleteClient(db, id)
 	require.NoError(t, err)
 
-	var got Client
-
-	err = db.QueryRow(
-		`SELECT id, fio, login, birthday, email
-		 FROM clients
-		 WHERE id = :id`,
-		sql.Named("id", n),
-	).Scan(&got.ID, &got.FIO, &got.Login, &got.Birthday, &got.Email)
+	_, err = selectClient(db, id)
 	require.ErrorIs(t, err, sql.ErrNoRows)
 }
